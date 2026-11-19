@@ -22,6 +22,22 @@ export function docDeliveryGateEnabled(env: NodeJS.ProcessEnv = process.env): bo
   return raw !== "off" && raw !== "false" && raw !== "0";
 }
 
+const PDF_MAGIC: readonly number[] = [0x25, 0x50, 0x44, 0x46, 0x2d]; // "%PDF-"
+
+/**
+ * True when the bytes look like a PDF, whatever the file is named. The
+ * signature is searched in the first 1024 bytes, as file(1) does, so a PDF
+ * renamed to .txt is still a PDF delivery — the gate keys on content, not
+ * on the extension alone.
+ */
+export function isPdfContent(bytes: Uint8Array): boolean {
+  const window = Math.min(bytes.length, 1024);
+  for (let i = 0; i + PDF_MAGIC.length <= window; i++) {
+    if (PDF_MAGIC.every((byte, j) => bytes[i + j] === byte)) return true;
+  }
+  return false;
+}
+
 const MAX_DEPTH = 8;
 
 /**

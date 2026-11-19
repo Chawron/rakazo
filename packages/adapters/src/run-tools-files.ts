@@ -11,7 +11,11 @@ import { getLogger } from "@rakazo/logging";
 import { resolveBotWorkspacePath } from "./computer-support.js";
 import { desktopGuardApplies, desktopProtectionGuardMessage } from "./desktop-command-guard.js";
 import { protectedActivateScriptWriteRefusal } from "./desktop-guard-words.js";
-import { docDeliveryGateEnabled, runHasPassingDocCheck } from "./doc-delivery-gate.js";
+import {
+  docDeliveryGateEnabled,
+  isPdfContent,
+  runHasPassingDocCheck,
+} from "./doc-delivery-gate.js";
 import { generateMediaFromTool } from "./media-generation-tools.js";
 import { mediaDelivery, scheduleMediaPoll } from "./media-video-poll.js";
 import type { RunContext } from "./run-context.js";
@@ -138,15 +142,18 @@ export const fileTools: ToolHandlers = {
     };
     const read = await readWorkspaceFile(ctx, call, filePath);
     if ("error" in read) return fail(read.error);
-    if (docDeliveryGateEnabled() && filePath.toLowerCase().endsWith(".pdf")) {
+    if (
+      docDeliveryGateEnabled() &&
+      (filePath.toLowerCase().endsWith(".pdf") || isPdfContent(read.bytes))
+    ) {
       const sha256 = createHash("sha256").update(read.bytes).digest("hex");
       if (!(await runHasPassingDocCheck(deps.prisma, run.id, sha256)))
         return fail(
-          "Document delivery gate: this PDF has not passed doc_check in this run, so it was not delivered. " +
-            "Check the exact file you deliver with the doc-checker tools (doc_render, then doc_check until passed is true, " +
-            "then doc_get to fetch the checked bytes into this workspace) and attach that file unchanged; " +
-            "the gate matches the delivered file's sha256 against the passing check. " +
-            "If the doc-checker tools are unavailable, tell the user instead of delivering an unchecked document.",
+          "Document delivery gate: this file is a PDF (by name or by content) and has not passed doc_check in this run, so it was not delivered. " +
+            "For a document: doc_render it, run doc_check until passed is true, download the checked file into this workspace with curl from the download_path doc_render returned, verify its sha256 matches, and attach it unchanged. " +
+            "For a drawing or another PDF made here: upload it to the checker with curl --data-binary, run doc_check with profile \"sheet\", and attach it unchanged once it passes. " +
+            "The gate matches the delivered file's sha256 against the passing check; renaming the file does not change that. " +
+            "If the doc-checker tools are unavailable, tell the user instead of delivering an unchecked PDF.",
         );
     }
     try {

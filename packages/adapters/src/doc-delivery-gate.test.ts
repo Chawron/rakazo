@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   docDeliveryGateEnabled,
   effectResultProvesDocCheck,
+  isPdfContent,
   runHasPassingDocCheck,
 } from "./doc-delivery-gate.js";
 
@@ -45,6 +46,19 @@ describe("effectResultProvesDocCheck", () => {
     expect(effectResultProvesDocCheck(null, SHA)).toBe(false);
     expect(effectResultProvesDocCheck("passed", SHA)).toBe(false);
     expect(effectResultProvesDocCheck(42, SHA)).toBe(false);
+  });
+});
+
+describe("isPdfContent", () => {
+  it("detects the PDF signature at the start or after a short preamble", () => {
+    expect(isPdfContent(new TextEncoder().encode("%PDF-1.4 body"))).toBe(true);
+    expect(isPdfContent(new TextEncoder().encode("\n\n%PDF-1.7 body"))).toBe(true);
+  });
+
+  it("ignores plain text and text that merely mentions the signature late", () => {
+    expect(isPdfContent(new TextEncoder().encode("meeting notes"))).toBe(false);
+    expect(isPdfContent(new TextEncoder().encode("x".repeat(2000) + "%PDF-"))).toBe(false);
+    expect(isPdfContent(new Uint8Array(0))).toBe(false);
   });
 });
 
