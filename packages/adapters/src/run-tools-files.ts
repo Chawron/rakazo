@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { MessageBlock } from "@rakazo/contracts";
 import { ATTACHMENT_MAX_BYTES } from "@rakazo/contracts";
 import {
@@ -10,6 +11,7 @@ import { getLogger } from "@rakazo/logging";
 import { resolveBotWorkspacePath } from "./computer-support.js";
 import { desktopGuardApplies, desktopProtectionGuardMessage } from "./desktop-command-guard.js";
 import { protectedActivateScriptWriteRefusal } from "./desktop-guard-words.js";
+import { docDeliveryGateEnabled, runHasPassingDocCheck } from "./doc-delivery-gate.js";
 import { generateMediaFromTool } from "./media-generation-tools.js";
 import { mediaDelivery, scheduleMediaPoll } from "./media-video-poll.js";
 import type { RunContext } from "./run-context.js";
@@ -136,6 +138,17 @@ export const fileTools: ToolHandlers = {
     };
     const read = await readWorkspaceFile(ctx, call, filePath);
     if ("error" in read) return fail(read.error);
+    if (docDeliveryGateEnabled() && filePath.toLowerCase().endsWith(".pdf")) {
+      const sha256 = createHash("sha256").update(read.bytes).digest("hex");
+      if (!(await runHasPassingDocCheck(deps.prisma, run.id, sha256)))
+        return fail(
+          "Document delivery gate: this PDF has not passed doc_check in this run, so it was not delivered. " +
+            "Check the exact file you deliver with the doc-checker tools (doc_render, then doc_check until passed is true, " +
+            "then doc_get to fetch the checked bytes into this workspace) and attach that file unchanged; " +
+            "the gate matches the delivered file's sha256 against the passing check. " +
+            "If the doc-checker tools are unavailable, tell the user instead of delivering an unchecked document.",
+        );
+    }
     try {
       // Background runs post no message (publishMessage drops attachment blocks).
       const background = isBackgroundRunTrigger(run.trigger);
