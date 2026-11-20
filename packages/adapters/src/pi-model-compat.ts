@@ -29,6 +29,27 @@ export function applyPiModelCompatibility(models: MutableModels): MutableModels 
     );
     models.setProvider({ ...compatible, getModels: () => systemModels });
   }
+  // The Qwen Token Plan and OpenCode Go serve qwen4-max and qwen4-max-preview,
+  // but Pi's bundled catalog predates them: they resolve as unknown models and
+  // image input is blocked at send time. Register them explicitly as
+  // image-capable clones of the same provider's qwen3.8-max catalog entry
+  // (same endpoint and protocol). Owner directive 2026-11-20: every model in
+  // use carries an explicit image tag instead of the unknown-model fallback.
+  const imageInput: Model<Api>["input"] = ["text", "image"];
+  for (const providerId of ["qwen-token-plan", "opencode-go"]) {
+    const served = models.getProvider?.(providerId);
+    if (!served) continue;
+    const existing = served.getModels();
+    const sibling = existing.find((model) => model.id === "qwen3.8-max");
+    if (!sibling) continue;
+    const additions = ["qwen4-max", "qwen4-max-preview"]
+      .filter((id) => !existing.some((model) => model.id === id))
+      .map((id) => ({ ...sibling, id, name: id, input: imageInput }));
+    if (additions.length > 0) {
+      const all = [...existing, ...additions];
+      models.setProvider({ ...served, getModels: () => all });
+    }
+  }
   const getModel = models.getModel.bind(models);
   models.getModel = (provider, id) => getModel(canonicalPiProviderId(provider), id);
   const getProvider = models.getProvider?.bind(models);
